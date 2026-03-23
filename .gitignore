@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+logs/
+data/
+resume/shashanks_resume.pdf
+.vscode/
+.idea/

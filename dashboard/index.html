@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Job Bot — Shashank</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #22263a;
+  --border: #2e3250;
+  --text: #e8eaf2;
+  --muted: #7b82a8;
+  --green: #22c55e;
+  --blue: #60a5fa;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --purple: #a78bfa;
+  --teal: #2dd4bf;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 13px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); min-height: 100vh; }
+
+header {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.05em; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.header-right { margin-left: auto; display: flex; gap: 8px; }
+.badge { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+
+.stats-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px; background: var(--border); border-bottom: 1px solid var(--border);
+}
+.stat-box { background: var(--surface); padding: 16px 20px; }
+.stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.stat-val { font-size: 26px; font-weight: 700; }
+.stat-val.green { color: var(--green); }
+.stat-val.blue { color: var(--blue); }
+.stat-val.amber { color: var(--amber); }
+.stat-val.purple { color: var(--purple); }
+.stat-val.teal { color: var(--teal); }
+.stat-val.red { color: var(--red); }
+
+.main { display: flex; height: calc(100vh - 116px); }
+.sidebar { width: 200px; border-right: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
+.nav-item {
+  display: block; padding: 12px 20px; font-size: 12px; color: var(--muted);
+  cursor: pointer; border-left: 2px solid transparent; transition: all 0.15s;
+}
+.nav-item:hover { color: var(--text); background: var(--surface2); }
+.nav-item.active { color: var(--text); border-left-color: var(--blue); background: var(--surface2); }
+.nav-count { float: right; background: var(--surface2); padding: 1px 6px; border-radius: 10px; font-size: 10px; }
+
+.content { flex: 1; overflow-y: auto; padding: 20px; }
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Job table */
+.filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.filters input, .filters select {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 6px 10px; border-radius: 4px; font-family: inherit; font-size: 12px;
+  outline: none;
+}
+.filters input:focus, .filters select:focus { border-color: var(--blue); }
+.filters input { flex: 1; min-width: 200px; }
+
+table { width: 100%; border-collapse: collapse; }
+thead { position: sticky; top: 0; background: var(--surface); z-index: 10; }
+th { padding: 8px 12px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); text-align: left; border-bottom: 1px solid var(--border); }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: top; }
+tr:hover td { background: var(--surface2); }
+
+.status-pill {
+  display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.s-found    { background: #1e293b; color: var(--muted); }
+.s-applied  { background: #1e3a5f; color: var(--blue); }
+.s-replied  { background: #292150; color: var(--purple); }
+.s-interview{ background: #1a3a2a; color: var(--teal); }
+.s-accepted { background: #14290a; color: var(--green); }
+.s-rejected { background: #3a1a1a; color: var(--red); }
+.s-skipped  { background: #2a2200; color: var(--amber); }
+.s-error    { background: #3a1a1a; color: var(--red); }
+
+.tag { display: inline-block; padding: 1px 5px; border-radius: 3px; background: var(--surface2); color: var(--muted); font-size: 10px; margin: 1px; }
+.platform-badge { font-size: 10px; color: var(--muted); }
+
+.match-bar-wrap { display: flex; align-items: center; gap: 6px; }
+.match-bar { height: 4px; border-radius: 2px; background: var(--border); flex: 1; min-width: 40px; }
+.match-fill { height: 100%; border-radius: 2px; background: var(--green); }
+.match-val { font-size: 10px; color: var(--muted); min-width: 26px; text-align: right; }
+
+.btn { padding: 4px 10px; border-radius: 3px; border: 1px solid var(--border); background: transparent; color: var(--text); cursor: pointer; font-family: inherit; font-size: 11px; }
+.btn:hover { background: var(--surface2); }
+.btn.primary { border-color: var(--blue); color: var(--blue); }
+.btn.green { border-color: var(--green); color: var(--green); }
+.btn.red { border-color: var(--red); color: var(--red); }
+.btn.amber { border-color: var(--amber); color: var(--amber); }
+
+/* Logs panel */
+.log-box {
+  background: #09090f; border: 1px solid var(--border); border-radius: 4px;
+  padding: 12px; height: calc(100vh - 200px); overflow-y: auto;
+  font-size: 11px; line-height: 1.7;
+}
+.log-line { white-space: pre-wrap; word-break: break-all; }
+.log-INFO { color: var(--text); }
+.log-WARNING { color: var(--amber); }
+.log-ERROR { color: var(--red); }
+.log-DEBUG { color: var(--muted); }
+
+/* Empty state */
+.empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty big { display: block; font-size: 32px; margin-bottom: 8px; }
+
+/* Modal */
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 100; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 24px; width: 400px; max-height: 90vh; overflow-y: auto; }
+.modal.wide { width: 700px; }
+.modal h2 { font-size: 14px; margin-bottom: 16px; }
+.modal label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 4px; margin-top: 12px; }
+.modal select, .modal textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 4px; font-family: inherit; font-size: 12px; }
+.modal textarea { resize: vertical; height: 80px; }
+.modal-actions { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="live-dot" id="live-dot"></div>
+  <h1>JOB BOT // SHASHANK</h1>
+  <div class="header-right">
+    <span class="badge" id="hdr-platform">Indeed · LinkedIn · Naukri · Company Pages</span>
+    <span class="badge" id="hdr-time"></span>
+    <button class="btn red" onclick="stopBot()" style="font-size:11px;">Stop Bot</button>
+  </div>
+</header>
+
+<div class="stats-row">
+  <div class="stat-box"><div class="stat-label">Total Found</div><div class="stat-val blue" id="s-total">—</div></div>
+  <div class="stat-box"><div class="stat-label">Applied</div><div class="stat-val green" id="s-applied">—</div></div>
+  <div class="stat-box"><div class="stat-label">Replied</div><div class="stat-val purple" id="s-replied">—</div></div>
+  <div class="stat-box"><div class="stat-label">Interviews</div><div class="stat-val teal" id="s-interview">—</div></div>
+  <div class="stat-box"><div class="stat-label">Accepted</div><div class="stat-val green" id="s-accepted">—</div></div>
+  <div class="stat-box"><div class="stat-label">Rejected</div><div class="stat-val red" id="s-rejected">—</div></div>
+</div>
+
+<div class="main">
+  <nav class="sidebar">
+    <div class="nav-item active" data-panel="all" onclick="showPanel('all',this)">All Jobs <span class="nav-count" id="nc-all">0</span></div>
+    <div class="nav-item" data-panel="applied" onclick="showPanel('applied',this)">Applied <span class="nav-count" id="nc-applied">0</span></div>
+    <div class="nav-item" data-panel="interview" onclick="showPanel('interview',this)">Interviews <span class="nav-count" id="nc-interview">0</span></div>
+    <div class="nav-item" data-panel="accepted" onclick="showPanel('accepted',this)">Accepted <span class="nav-count" id="nc-accepted">0</span></div>
+    <div class="nav-item" data-panel="rejected" onclick="showPanel('rejected',this)">Rejected <span class="nav-count" id="nc-rejected">0</span></div>
+    <div class="nav-item" data-panel="skipped" onclick="showPanel('skipped',this)">Skipped <span class="nav-count" id="nc-skipped">0</span></div>
+    <div class="nav-item" data-panel="qa" onclick="showPanel('qa',this)">Q&A <span class="nav-count" id="nc-qa">0</span></div>
+    <div class="nav-item" data-panel="logs" onclick="showPanel('logs',this)">Logs</div>
+  </nav>
+
+  <div class="content">
+    <!-- All jobs panel -->
+    <div class="panel active" id="panel-all">
+      <div class="filters">
+        <input type="text" id="filter-search" placeholder="Search title, company..." oninput="renderTable()" />
+        <select id="filter-platform" onchange="renderTable()">
+          <option value="">All platforms</option>
+          <option value="Indeed">Indeed</option>
+          <option value="LinkedIn">LinkedIn</option>
+          <option value="Naukri">Naukri</option>
+          <option value="Company">Company</option>
+        </select>
+        <select id="filter-status" onchange="renderTable()">
+          <option value="">All statuses</option>
+          <option value="found">Found</option>
+          <option value="applied">Applied</option>
+          <option value="interview">Interview</option>
+          <option value="accepted">Accepted</option>
+          <option value="rejected">Rejected</option>
+          <option value="skipped">Skipped</option>
+        </select>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Title</th><th>Company</th><th>Platform</th>
+            <th>Match</th><th>Salary</th><th>Status</th><th>Applied</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="job-table-body"></tbody>
+      </table>
+    </div>
+
+    <!-- Filtered panels -->
+    <div class="panel" id="panel-applied"></div>
+    <div class="panel" id="panel-interview"></div>
+    <div class="panel" id="panel-accepted"></div>
+    <div class="panel" id="panel-rejected"></div>
+    <div class="panel" id="panel-skipped"></div>
+
+    <!-- QA panel -->
+    <div class="panel" id="panel-qa">
+      <div style="margin-bottom:16px;">
+        <span style="font-size:13px;font-weight:600;">Unanswered Questions</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:8px;">Questions the bot encountered but couldn't answer. Fill them in and the bot will use your answers for future applications.</span>
+      </div>
+      <div id="qa-unanswered"></div>
+      <hr style="border-color:var(--border);margin:20px 0;">
+      <div style="margin-bottom:12px;">
+        <span style="font-size:13px;font-weight:600;">All Saved Answers</span>
+        <button class="btn" onclick="loadQA()" style="margin-left:8px;">Refresh</button>
+      </div>
+      <table>
+        <thead><tr><th>Question</th><th>Answer</th><th>Key</th><th>Action</th></tr></thead>
+        <tbody id="qa-table-body"></tbody>
+      </table>
+      <hr style="border-color:var(--border);margin:20px 0;">
+      <div style="margin-bottom:8px;font-size:12px;font-weight:600;">Add New Answer</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div style="flex:1;">
+          <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px;">Question</label>
+          <input type="text" id="qa-new-question" placeholder="e.g. What is your expected CTC?" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:4px;font-family:inherit;font-size:12px;">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px;">Answer</label>
+          <input type="text" id="qa-new-answer" placeholder="e.g. 6 LPA" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:4px;font-family:inherit;font-size:12px;">
+        </div>
+        <button class="btn primary" onclick="saveNewQA()">Save</button>
+      </div>
+    </div>
+
+    <!-- Logs panel -->
+    <div class="panel" id="panel-logs">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <span style="font-size:11px;color:var(--muted);">Live log tail (last 100 lines)</span>
+        <button class="btn" onclick="loadLogs()">Refresh</button>
+      </div>
+      <div class="log-box" id="log-box"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Outcome modal -->
+<div class="modal-bg" id="outcome-modal">
+  <div class="modal">
+    <h2>Update job outcome</h2>
+    <input type="hidden" id="modal-job-id" />
+    <label>Outcome</label>
+    <select id="modal-outcome">
+      <option value="interview">Interview scheduled</option>
+      <option value="accepted">Accepted / Offer received</option>
+      <option value="rejected">Rejected</option>
+      <option value="ghosted">Ghosted (no reply)</option>
+    </select>
+    <label>Notes (optional)</label>
+    <textarea id="modal-notes" placeholder="e.g. HR called, interview on 25th March"></textarea>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn primary" onclick="saveOutcome()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Resume viewer modal -->
+<div class="modal-bg" id="resume-modal">
+  <div class="modal wide">
+    <h2 id="resume-modal-title">Tailored Resume</h2>
+    <pre id="resume-modal-text" style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:16px;font-size:11px;line-height:1.6;max-height:60vh;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;color:var(--text);"></pre>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeResumeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let allJobs = [];
+let currentPanel = 'all';
+
+// Career page URLs for company jobs that don't have direct links
+const CAREER_URLS = {
+  'Google': 'https://careers.google.com/jobs/results/',
+  'Microsoft': 'https://jobs.careers.microsoft.com/',
+  'Amazon': 'https://www.amazon.jobs/en/search?base_query=cloud+devops+ml&loc_query=Bangalore',
+  'Flipkart': 'https://www.flipkartcareers.com/#!/joblist',
+  'Razorpay': 'https://razorpay.com/jobs/',
+  'Zepto': 'https://www.zepto.team/careers',
+  'Meesho': 'https://meesho.io/jobs',
+  'PhonePe': 'https://www.phonepe.com/careers/',
+  'Swiggy': 'https://careers.swiggy.com/',
+  'CRED': 'https://careers.cred.club/',
+  'Atlassian': 'https://www.atlassian.com/company/careers/all-jobs',
+  'Uber': 'https://www.uber.com/in/en/careers/list/',
+  'Zomato': 'https://www.zomato.com/careers',
+  'Ola': 'https://www.olacabs.com/careers',
+  'Juspay': 'https://juspay.in/careers',
+  'Groww': 'https://groww.in/careers',
+};
+
+function getCareerUrl(company) {
+  if (!company) return '';
+  // Exact match first
+  if (CAREER_URLS[company]) return CAREER_URLS[company];
+  // Fuzzy match
+  const lower = company.toLowerCase();
+  for (const [name, url] of Object.entries(CAREER_URLS)) {
+    if (lower.includes(name.toLowerCase()) || name.toLowerCase().includes(lower)) return url;
+  }
+  return '';
+}
+
+function fmtDate(s) {
+  if (!s) return '—';
+  return new Date(s).toLocaleDateString('en-IN', {day:'2-digit', month:'short'});
+}
+
+function statusPill(s) {
+  return `<span class="status-pill s-${s}">${s}</span>`;
+}
+
+function matchBar(score) {
+  const w = Math.max(0, Math.min(100, score || 0));
+  const color = w >= 80 ? 'var(--green)' : w >= 60 ? 'var(--amber)' : 'var(--red)';
+  return `<div class="match-bar-wrap">
+    <div class="match-bar"><div class="match-fill" style="width:${w}%;background:${color}"></div></div>
+    <span class="match-val">${w}%</span>
+  </div>`;
+}
+
+function tagsHtml(tags) {
+  if (!tags || !tags.length) return '';
+  return tags.slice(0, 4).map(t => `<span class="tag">${t}</span>`).join('');
+}
+
+async function loadJobs() {
+  try {
+    const r = await fetch('/api/jobs');
+    allJobs = await r.json();
+    updateCounts();
+    renderTable();
+    renderFilteredPanels();
+  } catch(e) {
+    console.error('Load jobs error', e);
+  }
+}
+
+async function loadStats() {
+  try {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+    const t = d.all_time || {};
+    document.getElementById('s-total').textContent = t.total ?? '—';
+    document.getElementById('s-applied').textContent = t.applied ?? '—';
+    document.getElementById('s-replied').textContent = t.replied ?? '—';
+    document.getElementById('s-interview').textContent = t.interview ?? '—';
+    document.getElementById('s-accepted').textContent = t.accepted ?? '—';
+    document.getElementById('s-rejected').textContent = t.rejected ?? '—';
+  } catch(e) {}
+}
+
+function updateCounts() {
+  const counts = {};
+  allJobs.forEach(j => counts[j.status] = (counts[j.status]||0)+1);
+  document.getElementById('nc-all').textContent = allJobs.length;
+  document.getElementById('nc-applied').textContent = counts.applied||0;
+  document.getElementById('nc-interview').textContent = counts.interview||0;
+  document.getElementById('nc-accepted').textContent = counts.accepted||0;
+  document.getElementById('nc-rejected').textContent = counts.rejected||0;
+  document.getElementById('nc-skipped').textContent = (counts.skipped||0) + (counts.error||0);
+}
+
+function getFiltered() {
+  const search = document.getElementById('filter-search').value.toLowerCase();
+  const platform = document.getElementById('filter-platform').value.toLowerCase();
+  const status = document.getElementById('filter-status').value;
+  return allJobs.filter(j => {
+    if (search && !((j.title||'').toLowerCase().includes(search) || (j.company||'').toLowerCase().includes(search))) return false;
+    if (platform && !(j.platform||'').toLowerCase().includes(platform)) return false;
+    if (status && j.status !== status) return false;
+    return true;
+  });
+}
+
+function renderTable() {
+  const jobs = currentPanel === 'all' ? getFiltered() : allJobs.filter(j => j.status === currentPanel);
+  const tbody = document.getElementById('job-table-body');
+  if (!tbody) return;
+  if (!jobs.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted);">No jobs found</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = jobs.map(j => {
+    const hasUrl = j.url && j.url.length > 1 && j.url.startsWith('http');
+    const jobUrl = hasUrl ? j.url : (j.platform && j.platform.includes('Company') ? getCareerUrl(j.company) : '');
+    const showLink = hasUrl || jobUrl;
+    return `
+    <tr>
+      <td>
+        ${showLink ? `<a href="${jobUrl || j.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${j.title}</a>` : `<span>${j.title}</span>`}<br>
+        <span style="font-size:10px;color:var(--muted);">${(j.tags||[]).slice(0,3).map(t=>`<span class="tag">${t}</span>`).join('')}</span>
+      </td>
+      <td style="color:var(--muted)">${j.company}</td>
+      <td><span class="platform-badge">${j.platform}</span></td>
+      <td>${matchBar(j.match_score)}</td>
+      <td style="color:var(--muted);font-size:11px;">${j.salary||'—'}</td>
+      <td>${statusPill(j.status)}</td>
+      <td style="color:var(--muted);font-size:11px;">${fmtDate(j.applied_at)}</td>
+      <td>
+        ${j.status !== 'accepted' && j.status !== 'rejected' ?
+          `<button class="btn amber" onclick="openModal('${j.id}')">Update</button>` : ''}
+        ${showLink ? `<a href="${jobUrl || j.url}" target="_blank" rel="noopener"><button class="btn">View Job</button></a>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderFilteredPanels() {
+  ['applied','interview','accepted','rejected','skipped'].forEach(status => {
+    const jobs = allJobs.filter(j => j.status === status || (status==='skipped' && j.status==='error'));
+    const panel = document.getElementById(`panel-${status}`);
+    if (!panel) return;
+    if (!jobs.length) {
+      panel.innerHTML = `<div class="empty"><big>∅</big>No ${status} jobs yet</div>`;
+      return;
+    }
+    panel.innerHTML = `<table>
+      <thead><tr><th>Title</th><th>Company</th><th>Platform</th><th>Match</th><th>Salary</th><th>Applied</th><th>Outcome</th><th>Action</th></tr></thead>
+      <tbody>${jobs.map(j => {
+        const hasUrl = j.url && j.url.length > 1 && j.url.startsWith('http');
+        const jobUrl = hasUrl ? j.url : (j.platform && j.platform.includes('Company') ? getCareerUrl(j.company) : '');
+        const showLink = hasUrl || jobUrl;
+        return `<tr>
+        <td>${showLink ? `<a href="${jobUrl || j.url}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${j.title}</a>` : j.title}</td>
+        <td style="color:var(--muted)">${j.company}</td>
+        <td><span class="platform-badge">${j.platform}</span></td>
+        <td>${matchBar(j.match_score)}</td>
+        <td style="color:var(--muted);font-size:11px;">${j.salary||'—'}</td>
+        <td style="color:var(--muted);font-size:11px;">${fmtDate(j.applied_at)}</td>
+        <td>${statusPill(j.outcome||j.status)}</td>
+        <td>
+          ${j.status !== 'accepted' && j.status !== 'rejected' ?
+            `<button class="btn amber" onclick="openModal('${j.id}')">Update</button>` : ''}
+          ${showLink ? `<a href="${jobUrl || j.url}" target="_blank" rel="noopener"><button class="btn">View Job</button></a>` : ''}
+        </td>
+      </tr>`}).join('')}</tbody>
+    </table>`;
+  });
+}
+
+function showPanel(name, navEl) {
+  currentPanel = name;
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const panel = document.getElementById(`panel-${name}`);
+  if (panel) panel.classList.add('active');
+  // Highlight the clicked nav item
+  if (navEl) {
+    navEl.classList.add('active');
+  } else {
+    // Fallback: find by data-panel attribute
+    const el = document.querySelector(`.nav-item[data-panel="${name}"]`);
+    if (el) el.classList.add('active');
+  }
+  if (name === 'logs') loadLogs();
+  else if (name === 'qa') loadQA();
+  else { renderTable(); renderFilteredPanels(); }
+}
+
+async function loadLogs() {
+  try {
+    const r = await fetch('/api/logs');
+    const d = await r.json();
+    const box = document.getElementById('log-box');
+    box.innerHTML = (d.lines||[]).map(line => {
+      const level = line.includes('[ERROR]') ? 'ERROR' : line.includes('[WARNING]') ? 'WARNING' : line.includes('[DEBUG]') ? 'DEBUG' : 'INFO';
+      return `<div class="log-line log-${level}">${escHtml(line)}</div>`;
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  } catch(e) {}
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function openModal(jobId) {
+  document.getElementById('modal-job-id').value = jobId;
+  document.getElementById('modal-notes').value = '';
+  document.getElementById('outcome-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('outcome-modal').classList.remove('open');
+}
+
+async function saveOutcome() {
+  const job_id = document.getElementById('modal-job-id').value;
+  const outcome = document.getElementById('modal-outcome').value;
+  const notes = document.getElementById('modal-notes').value;
+  await fetch('/api/outcome', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({job_id, outcome, notes})
+  });
+  closeModal();
+  await loadJobs();
+  await loadStats();
+}
+
+// QA
+async function loadQA() {
+  try {
+    const [answersR, unansweredR] = await Promise.all([
+      fetch('/api/qa'), fetch('/api/qa/unanswered')
+    ]);
+    const answers = await answersR.json();
+    const unanswered = await unansweredR.json();
+
+    document.getElementById('nc-qa').textContent = unanswered.length;
+
+    // Unanswered
+    const uaDiv = document.getElementById('qa-unanswered');
+    if (!unanswered.length) {
+      uaDiv.innerHTML = '<div style="color:var(--muted);padding:12px;">No unanswered questions</div>';
+    } else {
+      uaDiv.innerHTML = unanswered.map(q => `
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:8px;background:var(--surface2);border-radius:4px;">
+          <span style="flex:1;font-size:12px;color:var(--amber);">${escHtml(q.question)}</span>
+          <input type="text" id="qa-ans-${q.key}" placeholder="Your answer..." style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:3px;font-family:inherit;font-size:11px;">
+          <button class="btn green" onclick="saveQAAnswer('${escHtml(q.key)}','${escHtml(q.question)}')">Save</button>
+        </div>
+      `).join('');
+    }
+
+    // All answers table — editable inline
+    const tbody = document.getElementById('qa-table-body');
+    if (!answers.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px;">No saved answers</td></tr>';
+    } else {
+      tbody.innerHTML = answers.map((a, i) => `
+        <tr id="qa-row-${i}">
+          <td style="font-size:11px;">
+            <input type="text" value="${escAttr(a.question)}" id="qa-q-${i}"
+              style="width:100%;background:transparent;border:1px solid transparent;color:var(--text);padding:4px 6px;border-radius:3px;font-family:inherit;font-size:11px;"
+              onfocus="this.style.borderColor='var(--blue)';this.style.background='var(--bg)'"
+              onblur="this.style.borderColor='transparent';this.style.background='transparent'" />
+          </td>
+          <td style="font-size:11px;">
+            <input type="text" value="${escAttr(a.answer)}" id="qa-a-${i}"
+              style="width:100%;background:transparent;border:1px solid transparent;color:${a.answer ? 'var(--green)' : 'var(--red)'};padding:4px 6px;border-radius:3px;font-family:inherit;font-size:11px;"
+              placeholder="(empty — click to fill)"
+              onfocus="this.style.borderColor='var(--blue)';this.style.background='var(--bg)';this.style.color='var(--text)'"
+              onblur="this.style.borderColor='transparent';this.style.background='transparent';this.style.color=this.value?'var(--green)':'var(--red)'" />
+          </td>
+          <td><span class="tag">${a.question_key}</span></td>
+          <td>
+            <button class="btn primary" onclick="saveEditedQA(${i},'${escAttr(a.question_key)}')">Save</button>
+            <button class="btn red" onclick="deleteQA('${escAttr(a.question_key)}')">Del</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+  } catch(e) { console.error('QA load error', e); }
+}
+
+async function saveQAAnswer(key, question) {
+  const input = document.getElementById('qa-ans-' + key);
+  if (!input) return;
+  const answer = input.value.trim();
+  if (!answer) return;
+  await fetch('/api/qa', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({question, answer})
+  });
+  await loadQA();
+}
+
+async function saveNewQA() {
+  const q = document.getElementById('qa-new-question').value.trim();
+  const a = document.getElementById('qa-new-answer').value.trim();
+  if (!q || !a) return;
+  await fetch('/api/qa', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({question: q, answer: a})
+  });
+  document.getElementById('qa-new-question').value = '';
+  document.getElementById('qa-new-answer').value = '';
+  await loadQA();
+}
+
+async function saveEditedQA(idx, key) {
+  const q = document.getElementById('qa-q-' + idx).value.trim();
+  const a = document.getElementById('qa-a-' + idx).value.trim();
+  if (!q) return;
+  await fetch('/api/qa', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({question: q, answer: a, key: key})
+  });
+  // Flash green to confirm save
+  const row = document.getElementById('qa-row-' + idx);
+  if (row) { row.style.background = 'rgba(34,197,94,0.1)'; setTimeout(() => row.style.background = '', 800); }
+  await loadQA();
+}
+
+async function deleteQA(key) {
+  if (!confirm('Delete this answer?')) return;
+  await fetch('/api/qa/delete', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({key: key})
+  });
+  await loadQA();
+}
+
+// Resume viewer
+async function viewResume(jobId) {
+  try {
+    const r = await fetch('/api/resume/' + jobId);
+    if (!r.ok) {
+      alert('Could not load resume for this job');
+      return;
+    }
+    const d = await r.json();
+    document.getElementById('resume-modal-title').textContent =
+      'Resume used: ' + (d.title || '') + ' @ ' + (d.company || '');
+    let text = d.resume_text || '';
+    if (!text) {
+      text = '(Bot has not applied to this job yet — no resume on record)';
+    } else if (text === '[Original resume used]') {
+      text = 'Original resume (shashanks_resume.pdf) was used for this application.\nNo tailoring was done — the job match score was below 80%.';
+    }
+    document.getElementById('resume-modal-text').textContent = text;
+    document.getElementById('resume-modal').classList.add('open');
+  } catch(e) { console.error('Resume load error', e); alert('Error loading resume'); }
+}
+
+function closeResumeModal() {
+  document.getElementById('resume-modal').classList.remove('open');
+}
+
+// Stop bot
+async function stopBot() {
+  if (!confirm('Stop the bot? You can restart it with: .venv\\Scripts\\python bot.py')) return;
+  try {
+    await fetch('/api/stop', {method:'POST'});
+    document.getElementById('live-dot').style.background = 'var(--red)';
+    alert('Bot stopped.');
+  } catch(e) { alert('Bot process ended.'); }
+}
+
+// Clock
+function updateClock() {
+  document.getElementById('hdr-time').textContent = new Date().toLocaleTimeString('en-IN');
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Auto-refresh
+async function refresh() {
+  await loadStats();
+  await loadJobs();
+}
+setInterval(refresh, 15000);
+refresh();
+</script>
+</body>
+</html>
