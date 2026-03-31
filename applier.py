@@ -179,6 +179,7 @@ class JobApplier:
     async def _apply_linkedin(self, job: dict, resume_pdf: str, cover: str) -> bool:
         if not self._linkedin_scraper:
             self._linkedin_scraper = LinkedInScraper(config)
+            self._linkedin_scraper.qa = self.qa  # inject QA handler for form filling
         page = await self._linkedin_scraper.new_page()
         try:
             if not await self._linkedin_scraper._login(page):

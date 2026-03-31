@@ -54,20 +54,7 @@ class JobBot:
     async def run(self):
         self.running = True
 
-        # Check if Opera is still running (Playwright needs exclusive profile access)
-        import subprocess
-        try:
-            result = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq opera.exe", "/NH"],
-                capture_output=True, text=True, timeout=5
-            )
-            if "opera.exe" in result.stdout.lower():
-                logger.warning("⚠️ Opera GX appears to be running. If the browser fails to launch, close Opera GX and restart the bot.")
-                print("\n⚠️  Opera GX is running — attempting to start anyway. Close it if the bot fails to launch.\n")
-        except Exception:
-            pass  # if tasklist fails, continue anyway
-
-        logger.info("Job bot started")
+        logger.info("Job bot started (bot uses its own browser profile — Opera GX can stay open)")
         logger.info(f"Targeting roles: {', '.join(config.TARGET_ROLES)}")
         logger.info(f"Location: {config.LOCATION}")
 

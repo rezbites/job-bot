@@ -1,7 +1,7 @@
 """Base scraper with shared Playwright browser management.
 
-Uses Opera GX with a persistent profile so all your existing logins
-(Google, LinkedIn, Naukri, Indeed) carry over automatically.
+Uses your REAL Opera GX profile so all existing logins carry over automatically.
+Opera GX must be CLOSED before running the bot (OS profile lock).
 """
 import asyncio
 import hashlib
@@ -22,19 +22,16 @@ CAPTCHA_INDICATORS = [
     "access denied", "rate limit", "too many requests",
 ]
 
-# Opera GX paths on Windows
 OPERA_EXE = os.getenv(
     "OPERA_PATH",
     r"C:\Users\shash\AppData\Local\Programs\Opera GX\opera.exe"
 )
-# Use the REAL Opera GX profile — reuses your existing login sessions
-# (LinkedIn, Naukri, Indeed, Google — everything you're logged into)
-# ⚠️ Opera must be CLOSED before running the bot (Playwright locks the profile)
-OPERA_PROFILE_DIR = os.getenv(
+# Use the real Opera GX profile — all your LinkedIn/Naukri/Indeed logins are here.
+# Opera GX must be closed before running the bot.
+BOT_PROFILE_DIR = os.getenv(
     "OPERA_PROFILE",
     r"C:\Users\shash\AppData\Roaming\Opera Software\Opera GX Stable"
 )
-BOT_PROFILE_DIR = OPERA_PROFILE_DIR
 
 
 def make_job_id(platform: str, title: str, company: str, url: str = "") -> str:
@@ -69,8 +66,7 @@ _shared_context = None
 
 
 async def get_shared_context(config) -> BrowserContext:
-    """Launch Opera GX with persistent profile (shared across all scrapers).
-    First run: you'll need to log into Google once. After that, sessions persist."""
+    """Launch Opera GX with the real profile (all existing logins intact)."""
     global _shared_pw, _shared_context
 
     if _shared_context:
@@ -78,11 +74,8 @@ async def get_shared_context(config) -> BrowserContext:
 
     _shared_pw = await async_playwright().start()
 
-    # Ensure profile dir exists
     Path(BOT_PROFILE_DIR).mkdir(parents=True, exist_ok=True)
 
-    # Use persistent context — this saves cookies, localStorage, sessions
-    # between bot runs. Log in once, stays logged in forever.
     launch_args = [
         "--no-sandbox",
         "--disable-blink-features=AutomationControlled",
@@ -104,7 +97,6 @@ async def get_shared_context(config) -> BrowserContext:
         ),
     )
 
-    # Block tracking/analytics
     await _shared_context.route(
         re.compile(r"(doubleclick|googlesyndication|analytics|facebook\.com/tr|hotjar)"),
         lambda route: route.abort()
