@@ -16,14 +16,16 @@ from pathlib import Path
 logger = logging.getLogger("tailor")
 
 # ── Config ────────────────────────────────────────────────────────────────────
+from config import config
+
 USE_ANTHROPIC = os.getenv("USE_ANTHROPIC", "false").lower() == "true"
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_API_KEY = config.ANTHROPIC_API_KEY
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")  # or llama3, deepseek-r1, phi3, etc.
 
-RESUME_TEXT = """
-Shashank Choudhary | Bengaluru, Karnataka | +91-8050522728
-shashank.30choudhary@gmail.com | github.com/rezbites
+RESUME_TEXT = f"""
+{config.FULL_NAME} | {config.LOCATION} | {config.PHONE}
+{config.EMAIL} | {config.LINKEDIN_URL} | {config.GITHUB_URL}
 
 PROFILE
 Software engineering intern with hands-on experience building scalable ML solutions in Python
@@ -151,8 +153,8 @@ Rules:
 - Quantify achievements where possible
 - Keep ALL facts truthful — do not fabricate anything. Keep the same 2 companies, same projects, same education.
 - Use EXACTLY these section headers on their own line in ALL CAPS: PROFILE, EDUCATION, EXPERIENCE, PROJECTS, TECHNICAL SKILLS, ACHIEVEMENTS
-- First line must be: Shashank Choudhary
-- Second line: Bengaluru, Karnataka | +91-8050522728 | shashank.30choudhary@gmail.com | linkedin.com/in/itsshashank | github.com/rezbites
+- First line must be: {config.FULL_NAME}
+- Second line: {config.LOCATION} | {config.PHONE} | {config.EMAIL} | {config.LINKEDIN_URL} | {config.GITHUB_URL}
 - Bullet points start with - (dash)
 - For Experience: company name and role on separate lines, then bullet points
 - For Skills: use format like "Languages: Python, C, Java, Go"
@@ -340,8 +342,8 @@ Role: {job.get('title')} at {job.get('company')}
 Location: {job.get('location', 'Bengaluru')}
 Skills required: {', '.join(job.get('tags', []))}
 
-Applicant: Shashank Choudhary
-LinkedIn: https://www.linkedin.com/in/itsshashank/
+Applicant: {config.FULL_NAME}
+LinkedIn: {config.LINKEDIN_URL}
 Background: B.Tech CSE (AI/ML) at JSSATE Bangalore (graduating 2026)
 Key experience: AWS ECS/Fargate, CI/CD pipelines, ML model deployment, Python, DevOps
 Achievement: Amazon ML Challenge Top 0.1% nationwide

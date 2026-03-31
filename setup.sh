@@ -7,7 +7,7 @@ set -e
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║         JOB BOT SETUP — Shashank Choudhary           ║"
+echo "║                    JOB BOT SETUP                     ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
@@ -31,10 +31,10 @@ playwright install-deps chromium 2>/dev/null || true
 mkdir -p logs data resume
 
 # 5. Copy resume if not present
-if [ ! -f "resume/shashank_resume.pdf" ]; then
+if [ ! -f "resume/your_resume.pdf" ]; then
   echo ""
   echo "⚠️  ACTION REQUIRED: Copy your resume PDF to:"
-  echo "     $(pwd)/resume/shashank_resume.pdf"
+  echo "     $(pwd)/resume/your_resume.pdf"
   echo ""
 fi
 

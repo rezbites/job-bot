@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from typing import Optional
 from db import JobDatabase
+from config import config
 
 logger = logging.getLogger("qa")
 
@@ -201,7 +202,7 @@ class QAHandler:
         known = self.db.get_all_answers()
         qa_context = "\n".join(f"Q: {a['question']} -> A: {a['answer']}" for a in known if a['answer'])
 
-        prompt = f"""You are filling out a job application form for Shashank Choudhary.
+        prompt = f"""You are filling out a job application form for {config.FULL_NAME}.
 Answer the following question concisely and accurately using ONLY the information below.
 If the information is not available, respond with exactly: UNKNOWN
 

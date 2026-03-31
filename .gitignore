@@ -4,6 +4,9 @@ __pycache__/
 .env
 logs/
 data/
-resume/shashanks_resume.pdf
+resume/*.pdf
 .vscode/
 .idea/
+.claude/
+status.txt
+temp_log.txt

@@ -29,13 +29,13 @@ _load_dotenv()
 @dataclass
 class Config:
     # ── Your profile ──────────────────────────────────────────────────────────
-    FULL_NAME: str = "Shashank Choudhary"
-    EMAIL: str = "shashank.30choudhary@gmail.com"
-    PHONE: str = "+91-8050522728"
-    LOCATION: str = "Bengaluru, Karnataka, India"
-    LINKEDIN_URL: str = "https://www.linkedin.com/in/itsshashank/"
-    GITHUB_URL: str = "https://github.com/rezbites"
-    PORTFOLIO_URL: str = ""  # add if you have one
+    FULL_NAME: str = field(default_factory=lambda: os.getenv("FULL_NAME", ""))
+    EMAIL: str = field(default_factory=lambda: os.getenv("EMAIL", ""))
+    PHONE: str = field(default_factory=lambda: os.getenv("PHONE", ""))
+    LOCATION: str = field(default_factory=lambda: os.getenv("LOCATION", ""))
+    LINKEDIN_URL: str = field(default_factory=lambda: os.getenv("LINKEDIN_URL", ""))
+    GITHUB_URL: str = field(default_factory=lambda: os.getenv("GITHUB_URL", ""))
+    PORTFOLIO_URL: str = field(default_factory=lambda: os.getenv("PORTFOLIO_URL", ""))
 
     # ── Target roles ──────────────────────────────────────────────────────────
     TARGET_ROLES: List[str] = field(default_factory=lambda: [
@@ -109,7 +109,7 @@ class Config:
     ])
 
     # ── Paths ─────────────────────────────────────────────────────────────────
-    RESUME_PDF: str = "resume/shashanks_resume.pdf"
+    RESUME_PDF: str = field(default_factory=lambda: os.getenv("RESUME_PDF", "resume/your_resume.pdf"))
     DATA_DIR: str = "data"
     LOGS_DIR: str = "logs"
     DASHBOARD_PORT: int = 8080

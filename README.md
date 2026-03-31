@@ -1,4 +1,4 @@
-# Job Auto-Apply Bot — Shashank Choudhary
+# Job Auto-Apply Bot
 
 Automated job search + apply bot targeting Cloud, DevOps, ML, AI, and Software Engineer roles.
 Covers **Indeed, LinkedIn, Naukri, and company career pages**.
@@ -39,7 +39,7 @@ chmod +x setup.sh start.sh stop.sh
 ### 3. Copy your resume
 
 ```bash
-cp /path/to/shashanks_resume.pdf resume/shashank_resume.pdf
+cp /path/to/your_resume.pdf resume/your_resume.pdf
 ```
 
 ### 4. Install Ollama (free, runs locally — no API key needed)
@@ -62,7 +62,7 @@ export OLLAMA_MODEL="llama3"   # default is mistral
 Open the `.env` file (already created in the folder) and fill in your details:
 
 ```
-LINKEDIN_EMAIL=shashank.30choudhary@gmail.com
+LINKEDIN_EMAIL=your.email@example.com
 LINKEDIN_PASSWORD=yourpassword
 
 NAUKRI_EMAIL=your@naukri.com
@@ -207,7 +207,7 @@ job-bot/
 │   ├── server.py           # aiohttp API server
 │   └── index.html          # Dashboard UI
 ├── resume/
-│   └── shashank_resume.pdf # ← copy your resume here
+│   └── your_resume.pdf # ← copy your resume here
 ├── logs/                   # Daily rotating log files
 ├── data/
 │   └── jobs.db             # SQLite database (auto-created)
