@@ -43,9 +43,9 @@ class JobBot:
         self.tailor = ResumeTailor()
         self.applier = JobApplier(self.db, self.tailor)
         self.scrapers = [
-            IndeedScraper(config),
-            LinkedInScraper(config),
+            LinkedInScraper(config),   # Easy Apply — highest chance of success
             NaukriScraper(config),
+            IndeedScraper(config),     # Slow (many pages) — runs last
             CompanyScraper(config),
         ]
         self.dashboard = DashboardServer(self.db)
@@ -62,12 +62,8 @@ class JobBot:
                 capture_output=True, text=True, timeout=5
             )
             if "opera.exe" in result.stdout.lower():
-                logger.error("⚠️ Opera GX is still running! Close it first so the bot can use your login sessions.")
-                logger.error("The bot reuses your Opera profile (cookies, sessions) — it needs exclusive access.")
-                logger.error("Close Opera, then run the bot again.")
-                print("\n❌ Close Opera GX first, then restart the bot.\n")
-                self.running = False
-                return
+                logger.warning("⚠️ Opera GX appears to be running. If the browser fails to launch, close Opera GX and restart the bot.")
+                print("\n⚠️  Opera GX is running — attempting to start anyway. Close it if the bot fails to launch.\n")
         except Exception:
             pass  # if tasklist fails, continue anyway
 

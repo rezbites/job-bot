@@ -64,7 +64,7 @@ class JobApplier:
             return
 
         # Skip low match score (threshold lowered since scoring starts at 0)
-        if job.get("match_score", 0) < 30:
+        if job.get("match_score", 0) < 5:
             logger.debug(f"Skipping low-match job: {job.get('title')} (score={job.get('match_score')})")
             return
 

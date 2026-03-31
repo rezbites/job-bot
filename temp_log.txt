@@ -1,0 +1,27 @@
+2026-03-23 16:06:05,831 [ERROR] scraper - Indeed: page load failed after 3 attempts — Page.goto: Target page, context or browser has been closed
+2026-03-23 16:06:05,836 [INFO] bot - Indeed: found 0 jobs
+2026-03-23 16:06:05,839 [ERROR] bot - LinkedIn scrape error: BrowserContext.new_page: Target page, context or browser has been closed
+2026-03-23 16:06:05,842 [ERROR] bot - Naukri scrape error: BrowserContext.new_page: Target page, context or browser has been closed
+2026-03-23 16:06:05,843 [ERROR] bot - CompanyPages scrape error: BrowserContext.new_page: Target page, context or browser has been closed
+2026-03-23 16:06:05,843 [INFO] bot - New jobs to process: 0
+2026-03-23 16:06:05,843 [INFO] bot - Waiting 60min before next cycle...
+2026-03-23 17:17:54,135 [INFO] bot - ── Cycle 2 ──────────────────────────────
+2026-03-23 17:17:54,209 [ERROR] bot - Indeed scrape error: BrowserContext.new_page: Target page, context or browser has been closed
+2026-03-23 17:17:54,216 [ERROR] bot - LinkedIn scrape error: BrowserContext.new_page: Target page, context or browser has been closed
+2026-03-23 17:17:54,222 [ERROR] bot - Naukri scrape error: BrowserContext.new_page: Target page, context or browser has been closed
+2026-03-23 17:17:54,229 [ERROR] bot - CompanyPages scrape error: BrowserContext.new_page: Target page, context or browser has been closed
+2026-03-23 17:17:54,230 [INFO] bot - New jobs to process: 0
+2026-03-23 17:17:54,230 [INFO] bot - Waiting 60min before next cycle...
+2026-03-23 19:22:13,099 [INFO] db - Database initialized at data\jobs.db
+2026-03-23 19:22:13,100 [INFO] tailor - Resume tailor using: Ollama (mistral)
+2026-03-23 19:22:13,104 [INFO] qa - Loaded 26 pre-seeded QA answers from data\qa_answers.json
+2026-03-23 19:22:13,291 [INFO] bot - Job bot started
+2026-03-23 19:22:13,291 [INFO] bot - Targeting roles: Software Engineer, Backend Engineer, Full Stack Engineer, Full Stack Developer, Python Developer, Cloud Engineer, DevOps Engineer, AWS Engineer, MLOps Engineer, ML Engineer, Machine Learning Engineer, AI Engineer, Gen AI Engineer, Data Engineer, Data Analyst, Data Scientist, Business Analyst, Platform Engineer, Site Reliability Engineer, Infrastructure Engineer
+2026-03-23 19:22:13,291 [INFO] bot - Location: Bengaluru, Karnataka, India
+2026-03-23 19:22:13,291 [INFO] bot - ── Cycle 1 ──────────────────────────────
+2026-03-23 19:22:14,155 [INFO] dashboard - Dashboard running at http://localhost:8080
+2026-03-23 19:22:32,674 [INFO] scraper - Browser launched: Opera GX (profile: C:\Users\shash\AppData\Roaming\Opera Software\Opera GX Stable)
+2026-03-23 19:22:41,450 [INFO] indeed - Indeed: already logged in (existing session)
+2026-03-23 19:23:11,611 [WARNING] scraper - Indeed: page load failed (attempt 1/3), retrying in 2s — Page.goto: Timeout 30000ms exceeded.
+Call log:
+- navigating to "https://in.indeed.com/jobs?q=Machine+Learning+Engineer&l=Bengaluru%2C+India&fromage=7&sort=date", waiting until "domcontentloaded"

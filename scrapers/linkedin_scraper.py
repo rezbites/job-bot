@@ -113,11 +113,11 @@ class LinkedInScraper(BaseScraper):
                 logger.warning("LinkedIn: skipping scrape (not logged in)")
                 return []
 
-            # Bangalore gets all queries; other cities get a subset to avoid rate limits
-            locations = self.config.LOCATIONS
+            # Only Bengaluru + Remote to keep scrape fast and get to applying sooner
+            locations = self.config.LOCATIONS[:2]  # Bengaluru, Bangalore only
             for loc_idx, location in enumerate(locations):
               loc_encoded = location.replace(' ', '%20')
-              queries = SEARCH_QUERIES if loc_idx < 2 else SEARCH_QUERIES[:6]
+              queries = SEARCH_QUERIES[:8]  # top 8 queries only
               for query in queries:
                 url = (
                     f"https://www.linkedin.com/jobs/search/?keywords={query.replace(' ', '%20')}"
@@ -135,15 +135,41 @@ class LinkedInScraper(BaseScraper):
                         await page.keyboard.press("End")
                         await asyncio.sleep(1.5)
 
-                    cards = await page.query_selector_all('.base-card, .job-search-card')
-                    logger.debug(f"LinkedIn '{query}': {len(cards)} cards")
+                    # Try authenticated layout first, fall back to public/guest layout
+                    cards = await page.query_selector_all(
+                        'li.jobs-search-results__list-item, '
+                        'li.scaffold-layout__list-item, '
+                        '.base-card, .job-search-card'
+                    )
+                    logger.info(f"LinkedIn '{query}' @ {location}: {len(cards)} cards")
 
                     for card in cards[:15]:
                         try:
-                            title_el = await card.query_selector('.base-search-card__title, h3.base-search-card__title')
-                            company_el = await card.query_selector('.base-search-card__subtitle, h4.base-search-card__subtitle')
-                            loc_el = await card.query_selector('.job-search-card__location')
-                            link_el = await card.query_selector('a.base-card__full-link, a.job-search-card__list-date')
+                            # Authenticated view selectors first, then public view fallbacks
+                            title_el = await card.query_selector(
+                                '.job-card-list__title, '
+                                '.job-card-container__link strong, '
+                                'a.job-card-list__title--link, '
+                                '.base-search-card__title, '
+                                'h3.base-search-card__title'
+                            )
+                            company_el = await card.query_selector(
+                                '.job-card-container__company-name, '
+                                '.artdeco-entity-lockup__subtitle span, '
+                                '.job-card-container__primary-description, '
+                                '.base-search-card__subtitle, '
+                                'h4.base-search-card__subtitle'
+                            )
+                            loc_el = await card.query_selector(
+                                '.job-card-container__metadata-item, '
+                                '.job-search-card__location'
+                            )
+                            link_el = await card.query_selector(
+                                'a.job-card-list__title--link, '
+                                'a.job-card-container__link, '
+                                'a.base-card__full-link, '
+                                'a.job-search-card__list-date'
+                            )
 
                             if not title_el:
                                 continue
@@ -218,10 +244,15 @@ class LinkedInScraper(BaseScraper):
             await page.goto(job["url"], timeout=30000, wait_until="domcontentloaded")
             await asyncio.sleep(2)
 
-            # Click Easy Apply button
-            apply_btn = await page.query_selector('button.jobs-apply-button, .jobs-s-apply button')
+            # Click Easy Apply button (authenticated layout has aria-label variants)
+            apply_btn = await page.query_selector(
+                'button.jobs-apply-button, '
+                '.jobs-s-apply button, '
+                'button[aria-label*="Easy Apply"], '
+                'button[aria-label*="easy apply"]'
+            )
             if not apply_btn:
-                logger.info(f"No Easy Apply button for: {job['title']}")
+                logger.info(f"No Easy Apply button for: {job['title']} @ {job.get('company')}")
                 return False
 
             await apply_btn.click()
@@ -276,4 +307,12 @@ class LinkedInScraper(BaseScraper):
 
         except Exception as e:
             logger.error(f"LinkedIn Easy Apply error for {job.get('title')}: {e}")
+            try:
+                from pathlib import Path
+                from datetime import datetime
+                Path("logs").mkdir(exist_ok=True)
+                await page.screenshot(path=f"logs/ea_error_{datetime.now().strftime('%H%M%S')}.png")
+                logger.info("Screenshot saved to logs/ea_error_*.png")
+            except Exception:
+                pass
             return False

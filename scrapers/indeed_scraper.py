@@ -90,7 +90,8 @@ class IndeedScraper(BaseScraper):
             # Attempt login for better results (not strictly required for scraping)
             await self._login(page)
 
-            locations = [loc.replace(' ', '+') for loc in self.config.LOCATIONS]
+            # Limit to Bengaluru + Remote to avoid 100+ slow page loads
+            locations = [loc.replace(' ', '+') for loc in self.config.LOCATIONS[:2]]
             for query in SEARCH_QUERIES:
                 for location in locations:
                     url = (

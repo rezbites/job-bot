@@ -11,7 +11,7 @@ import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Dict
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import async_playwright, BrowserContext, Page
 
 logger = logging.getLogger("scraper")
 
@@ -128,14 +128,24 @@ class BaseScraper(ABC):
         return self.context
 
     async def new_page(self) -> Page:
-        ctx = await self._get_context()
-        page = await ctx.new_page()
-        # Anti-detection: hide webdriver flag
-        await page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            window.chrome = {runtime: {}};
-        """)
-        return page
+        global _shared_context
+        for attempt in range(2):
+            try:
+                ctx = await self._get_context()
+                page = await ctx.new_page()
+                # Anti-detection: hide webdriver flag
+                await page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    window.chrome = {runtime: {}};
+                """)
+                return page
+            except Exception as e:
+                if "closed" in str(e).lower() and attempt == 0:
+                    logger.warning(f"Browser context was closed — reinitializing browser... ({e})")
+                    _shared_context = None
+                    self.context = None
+                else:
+                    raise
 
     async def safe_goto(self, page: Page, url: str, retries: int = 3,
                         timeout: int = 30000) -> bool:

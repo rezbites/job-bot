@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ollama list:*)",
+      "Bash(ollama pull:*)",
+      "Bash(.venv/Scripts/python.exe bot.py)",
+      "Bash(taskkill //F //IM python.exe)"
+    ]
+  }
+}
