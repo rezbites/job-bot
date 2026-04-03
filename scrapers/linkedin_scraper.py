@@ -36,16 +36,27 @@ async def _click_span_text(page, *texts) -> bool:
     """Click a button that contains a span with the given text. Returns True if clicked."""
     for text in texts:
         try:
-            # Playwright text selector — most reliable for LinkedIn buttons
-            btn = await page.query_selector(f'button:has(span:text-is("{text}"))')
-            if not btn:
-                btn = await page.query_selector(f'[role="button"]:has(span:text-is("{text}"))')
-            if btn:
-                await btn.click()
-                logger.debug(f"Clicked button: '{text}'")
-                return True
-        except Exception:
-            pass
+            # Try multiple selectors for LinkedIn buttons
+            selectors = [
+                f'button:has(span:text-is("{text}"))',
+                f'[role="button"]:has(span:text-is("{text}"))',
+                f'button:has-text("{text}")',
+                f'[role="button"]:has-text("{text}")',
+            ]
+            for selector in selectors:
+                btn = await page.query_selector(selector)
+                if btn:
+                    # Check if button is visible and enabled
+                    is_visible = await btn.is_visible()
+                    is_enabled = await btn.is_enabled()
+                    if is_visible and is_enabled:
+                        await btn.click()
+                        logger.info(f"    Clicked button: '{text}'")
+                        return True
+                    else:
+                        logger.debug(f"    Button '{text}' found but not clickable (visible={is_visible}, enabled={is_enabled})")
+        except Exception as e:
+            logger.debug(f"Button click error for '{text}': {e}")
     return False
 
 
@@ -65,8 +76,36 @@ class LinkedInScraper(BaseScraper):
             await page.goto("https://www.linkedin.com/feed/", timeout=30000)
             await asyncio.sleep(3)
 
-            # Opera profile is already logged in — confirm by checking URL
-            if "feed" in page.url or "mynetwork" in page.url:
+            current_url = page.url
+            logger.debug(f"LinkedIn login check - URL: {current_url}")
+
+            logged_in_marker = await page.query_selector(
+                'a[href*="/jobs/"], '
+                'a[data-test-global-nav-link="jobs"], '
+                'button[aria-label*="Me"], '
+                'img.global-nav__me-photo, '
+                '[data-test-global-nav-link="jobs"], '
+                '.global-nav__me-photo, '
+                '.feed-identity-module'
+            )
+            logged_out_marker = await page.query_selector(
+                'input[name="session_key"], '
+                '#session_key, '
+                'a[href*="/login"], '
+                '.authwall, '
+                'main:has-text("Sign in")'
+            )
+
+            logger.debug(f"LinkedIn login check - logged_in_marker: {logged_in_marker}, logged_out_marker: {logged_out_marker}")
+
+            # If we're on a feed-like URL and have no obvious logout markers, assume logged in
+            if '/feed' in current_url and not logged_out_marker:
+                self._logged_in = True
+                logger.info("LinkedIn: already logged in (URL check)")
+                return True
+
+            # Confirm authenticated session by UI markers, not URL alone.
+            if logged_in_marker and not logged_out_marker:
                 self._logged_in = True
                 logger.info("LinkedIn: already logged in (existing session)")
                 return True
@@ -84,7 +123,16 @@ class LinkedInScraper(BaseScraper):
             await page.click('button[type="submit"]')
             await asyncio.sleep(5)
 
-            if "feed" in page.url or "mynetwork" in page.url:
+            logged_in_after = await page.query_selector(
+                'a[href*="/jobs/"], '
+                'a[data-test-global-nav-link="jobs"], '
+                'button[aria-label*="Me"], '
+                'img.global-nav__me-photo'
+            )
+            logged_out_after = await page.query_selector(
+                'input[name="session_key"], #session_key, .authwall'
+            )
+            if logged_in_after and not logged_out_after:
                 self._logged_in = True
                 logger.info("LinkedIn: logged in via credentials")
                 return True
@@ -257,6 +305,195 @@ class LinkedInScraper(BaseScraper):
         text_lower = text.lower()
         return [kw for kw in keywords if kw.lower() in text_lower]
 
+    async def handle_easy_apply_modal(self, page, job: dict, resume_path: str, cover_letter: str) -> bool:
+        """
+        Handle LinkedIn Easy Apply modal after the button has been clicked.
+        Called by applier.py after it clicks the Easy Apply button.
+        """
+        try:
+            # Wait for modal to appear with proper selector
+            modal_selectors = [
+                '.jobs-easy-apply-modal',
+                '.jobs-apply-modal',
+                'div[data-test-modal]',
+                'div[role="dialog"][aria-labelledby*="apply"]',
+                'div.artdeco-modal--layer-default',
+                '.artdeco-modal__content'
+            ]
+            
+            modal = None
+            for attempt in range(3):
+                for sel in modal_selectors:
+                    modal = await page.query_selector(sel)
+                    if modal and await modal.is_visible():
+                        logger.info(f"Found Easy Apply modal with selector: {sel}")
+                        break
+                if modal and await modal.is_visible():
+                    break
+                    
+                # If no modal found, try clicking the Easy Apply button again
+                if attempt < 2:
+                    logger.info(f"Modal not found (attempt {attempt + 1}), retrying click...")
+                    apply_btn = await page.query_selector(
+                        'button:has-text("Easy Apply"), '
+                        'button.jobs-apply-button:has-text("Easy Apply")'
+                    )
+                    if apply_btn:
+                        await apply_btn.scroll_into_view_if_needed()
+                        await asyncio.sleep(0.3)
+                        try:
+                            await apply_btn.evaluate("el => el.click()")
+                        except Exception:
+                            await apply_btn.click()
+                        await asyncio.sleep(2)
+            
+            if not modal:
+                logger.warning(f"Easy Apply modal not found after multiple attempts for: {job.get('title')}")
+            
+            # Multi-step form loop
+            max_steps = 8
+            last_clicked = None
+            stuck_count = 0
+            
+            for step in range(max_steps):
+                logger.info(f"  Easy Apply step {step + 1}/{max_steps}")
+
+                # Fill phone if empty
+                phone_field = await page.query_selector('input[id*="phone"], input[name*="phone"]')
+                if phone_field:
+                    val = await phone_field.input_value()
+                    if not val:
+                        await phone_field.fill(self.config.PHONE)
+                        logger.info(f"    Filled phone: {self.config.PHONE}")
+
+                # Fill cover letter textarea
+                cover_field = await page.query_selector(
+                    'textarea[id*="cover"], textarea[placeholder*="cover"], '
+                    'textarea[name*="cover"]'
+                )
+                if cover_field and cover_letter:
+                    val = await cover_field.input_value()
+                    if not val:
+                        await cover_field.fill(cover_letter[:1000])
+                        logger.info("    Filled cover letter")
+
+                # Upload resume
+                file_input = await page.query_selector('input[type="file"]')
+                if file_input and resume_path and Path(resume_path).exists():
+                    await file_input.set_input_files(resume_path)
+                    await asyncio.sleep(1)
+                    logger.info(f"    Uploaded resume: {resume_path}")
+
+                # Handle LinkedIn radio fieldsets
+                await self._fill_radio_fieldsets(page)
+
+                # Handle text inputs with labels
+                await self._fill_text_inputs(page)
+
+                # Handle dropdowns
+                await self._fill_selects(page)
+                
+                # Check for validation errors
+                error_msgs = await page.query_selector_all('.artdeco-inline-feedback--error, [class*="error"], .fb-dash-form-element__error')
+                if error_msgs:
+                    for err in error_msgs[:3]:
+                        try:
+                            txt = (await err.inner_text()).strip()
+                            if txt:
+                                logger.warning(f"    Form error: {txt}")
+                        except:
+                            pass
+
+                await asyncio.sleep(0.5)
+
+                # Debug: Log available buttons in modal
+                if step == 0:
+                    buttons = await page.query_selector_all('button')
+                    btn_texts = []
+                    for b in buttons:
+                        try:
+                            txt = (await b.inner_text()).strip()[:50]
+                            if txt:
+                                btn_texts.append(txt)
+                        except:
+                            pass
+                    logger.debug(f"Available buttons: {btn_texts[:10]}")
+
+                # Navigate using span text — how LinkedIn actually renders buttons
+                # Check for "Submit application" first
+                if await _click_span_text(page, "Submit application", "Submit"):
+                    await asyncio.sleep(3)
+                    # Check for confirmation / "Done" button
+                    if await _click_span_text(page, "Done"):
+                        await asyncio.sleep(1)
+                    logger.info(f"LinkedIn Easy Apply SUBMITTED: {job['title']} @ {job.get('company')}")
+                    return True
+
+                # Try Review → Next → Continue and track what we clicked
+                clicked_btn = None
+                if await _click_span_text(page, "Review"):
+                    clicked_btn = "Review"
+                    await asyncio.sleep(1.5)
+                elif await _click_span_text(page, "Next", "Continue"):
+                    clicked_btn = "Next"
+                    await asyncio.sleep(1.5)
+                
+                if clicked_btn:
+                    # Check if stuck clicking same button
+                    if clicked_btn == last_clicked:
+                        stuck_count += 1
+                        if stuck_count >= 3:
+                            logger.warning(f"  Stuck clicking '{clicked_btn}' {stuck_count} times - taking screenshot")
+                            try:
+                                Path("logs").mkdir(exist_ok=True)
+                                await page.screenshot(path=f"logs/ea_stuck_{clicked_btn}_{datetime.now().strftime('%H%M%S')}.png")
+                            except:
+                                pass
+                            break
+                    else:
+                        stuck_count = 0
+                    last_clicked = clicked_btn
+                    continue
+
+                # No navigable button found — form may be complete or stuck
+                # Debug: get all button texts
+                all_btns = await page.query_selector_all('button, [role="button"]')
+                btn_labels = []
+                for b in all_btns:
+                    try:
+                        txt = (await b.inner_text()).strip().replace('\n', ' ')[:40]
+                        if txt:
+                            btn_labels.append(txt)
+                    except:
+                        pass
+                logger.info(f"  No navigation button found at step {step + 1}. Buttons: {btn_labels[:8]}")
+                
+                # Last attempt for submit
+                if await _click_span_text(page, "Submit application", "Submit"):
+                    await asyncio.sleep(2)
+                    return True
+                
+                # Take screenshot for debugging on handle_easy_apply_modal
+                try:
+                    Path("logs").mkdir(exist_ok=True)
+                    await page.screenshot(path=f"logs/ea_modal_stuck_step{step+1}_{datetime.now().strftime('%H%M%S')}.png")
+                    logger.info(f"  Screenshot saved: ea_modal_stuck_step{step+1}")
+                except Exception as e:
+                    logger.debug(f"  Screenshot error: {e}")
+                break
+
+            logger.info(f"Easy Apply did not reach submission for: {job['title']}")
+            return False
+
+        except Exception as e:
+            logger.error(f"LinkedIn Easy Apply modal error for {job.get('title')}: {e}")
+            try:
+                Path("logs").mkdir(exist_ok=True)
+                await page.screenshot(path=f"logs/ea_modal_error_{datetime.now().strftime('%H%M%S')}.png")
+            except:
+                pass
+            return False
+
     async def easy_apply(self, page, job: dict, resume_path: str, cover_letter: str) -> bool:
         """
         Attempt LinkedIn Easy Apply. Uses span-text button navigation (how LinkedIn
@@ -264,8 +501,12 @@ class LinkedInScraper(BaseScraper):
         Reference: GodsScion/Auto_job_applier_linkedIn
         """
         try:
-            await page.goto(job["url"], timeout=30000, wait_until="domcontentloaded")
-            await asyncio.sleep(2)
+            # Only navigate if we're not already on the job page
+            current_url = page.url
+            job_url = job.get("url", "")
+            if job_url and job_url not in current_url and "/jobs/view/" not in current_url:
+                await page.goto(job_url, timeout=30000, wait_until="domcontentloaded")
+                await asyncio.sleep(2)
 
             # FIX 2: Correct Easy Apply button selector. 
             # LinkedIn changes aria-labels frequently. Text-based filtering is much safer.
@@ -443,6 +684,19 @@ class LinkedInScraper(BaseScraper):
 
                     answer = self.qa.get_answer(text)
                     if answer:
+                        # Check if field expects a number but answer is non-numeric
+                        if input_type == "number" or "decimal" in text.lower() or "years" in text.lower():
+                            # Try to extract or convert to numeric
+                            if answer.lower() in ("immediate", "immediately", "asap", "now"):
+                                answer = "0"
+                            elif not answer.replace(".", "").replace("-", "").isdigit():
+                                # Try to extract first number from answer
+                                import re
+                                nums = re.findall(r'\d+\.?\d*', answer)
+                                if nums:
+                                    answer = nums[0]
+                                else:
+                                    answer = "0.5"  # Default fallback
                         await field.fill(answer)
                         logger.info(f"    Text: '{text}' → '{answer[:40]}'")
                 except Exception:

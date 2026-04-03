@@ -1,7 +1,7 @@
 """Base scraper with shared Playwright browser management.
 
-Uses your REAL Opera GX profile so all existing logins carry over automatically.
-Opera GX must be CLOSED before running the bot (OS profile lock).
+Uses Chromium/Chrome persistent profile so existing logins carry over automatically.
+The browser using that profile must be CLOSED before running the bot (OS profile lock).
 """
 import asyncio
 import hashlib
@@ -22,15 +22,17 @@ CAPTCHA_INDICATORS = [
     "access denied", "rate limit", "too many requests",
 ]
 
-OPERA_EXE = os.getenv(
-    "OPERA_PATH",
-    r"C:\Users\shash\AppData\Local\Programs\Opera GX\opera.exe"
+CHROMIUM_EXE = os.getenv("CHROMIUM_PATH", "")
+CHROME_EXE = os.getenv(
+    "CHROME_PATH",
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 )
-# Use the real Opera GX profile — all your LinkedIn/Naukri/Indeed logins are here.
-# Opera GX must be closed before running the bot.
+CHROME_PROFILE_NAME = os.getenv("CHROME_PROFILE_NAME", "Default")
+CHROME_CDP_URL = os.getenv("CHROME_CDP_URL", "http://127.0.0.1:9222")
+# Use bot-local profile for remote debugging compatibility
 BOT_PROFILE_DIR = os.getenv(
-    "OPERA_PROFILE",
-    r"C:\Users\shash\AppData\Roaming\Opera Software\Opera GX Stable"
+    "CHROME_PROFILE",
+    str(Path(__file__).parent.parent / "data" / "chrome_profile")
 )
 
 
@@ -65,8 +67,63 @@ _shared_pw = None
 _shared_context = None
 
 
+import subprocess
+import signal
+
+def _kill_chrome_processes():
+    """Kill all Chrome processes to release profile lock."""
+    try:
+        out = subprocess.check_output(["tasklist", "/FO", "CSV", "/NH"], text=True, errors="ignore")
+        pids = []
+        for line in out.splitlines():
+            parts = [p.strip('"') for p in line.split('","')]
+            if parts and parts[0].lower() == 'chrome.exe':
+                try:
+                    pids.append(int(parts[1]))
+                except:
+                    pass
+        for pid in pids:
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+        return len(pids)
+    except:
+        return 0
+
+def _launch_chrome_with_cdp(port: int = 9222):
+    """Launch Chrome with remote debugging enabled and return the CDP URL."""
+    import time
+    import urllib.request
+    
+    chrome_path = CHROME_EXE
+    profile = BOT_PROFILE_DIR
+    profile_name = CHROME_PROFILE_NAME
+    
+    # Launch Chrome with debugging port
+    cmd = [
+        chrome_path,
+        f"--user-data-dir={profile}",
+        f"--profile-directory={profile_name}",
+        f"--remote-debugging-port={port}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "about:blank"
+    ]
+    
+    subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+    
+    # Wait for Chrome to start and CDP to be available
+    cdp_url = f"http://127.0.0.1:{port}"
+    for _ in range(10):  # 10 second timeout
+        time.sleep(1)
+        try:
+            urllib.request.urlopen(f"{cdp_url}/json/version", timeout=2)
+            return cdp_url
+        except:
+            pass
+    return None
+
+
 async def get_shared_context(config) -> BrowserContext:
-    """Launch Opera GX with the real profile (all existing logins intact)."""
+    """Launch Chromium/Chrome with existing profile (all existing logins intact)."""
     global _shared_pw, _shared_context
 
     if _shared_context:
@@ -74,17 +131,62 @@ async def get_shared_context(config) -> BrowserContext:
 
     _shared_pw = await async_playwright().start()
 
+    # Strategy: Kill Chrome, relaunch with CDP, connect via CDP
+    # This preserves DPAPI-encrypted cookies that Playwright's Chromium can't decrypt
+    cdp_url = CHROME_CDP_URL
+    if not cdp_url:
+        logger.info("Preparing Chrome with remote debugging...")
+        killed = _kill_chrome_processes()
+        if killed > 0:
+            logger.info(f"Killed {killed} Chrome processes to release profile lock")
+            import time
+            time.sleep(2)  # Wait for profile to be fully released
+        
+        cdp_url = _launch_chrome_with_cdp(port=9222)
+        if cdp_url:
+            logger.info(f"Chrome launched with CDP at {cdp_url}")
+        else:
+            logger.warning("Failed to launch Chrome with CDP - falling back to direct launch")
+            cdp_url = None
+
+    if cdp_url:
+        try:
+            browser = await _shared_pw.chromium.connect_over_cdp(cdp_url)
+            if browser.contexts:
+                _shared_context = browser.contexts[0]
+            else:
+                _shared_context = await browser.new_context(
+                    viewport={"width": 1366, "height": 800},
+                    locale="en-IN",
+                )
+            logger.info(f"Browser connected over CDP: {cdp_url}")
+            return _shared_context
+        except Exception as e:
+            logger.warning(f"CDP connect failed ({cdp_url}); falling back to persistent launch: {e}")
+        except Exception as e:
+            logger.warning(f"CDP connect failed ({CHROME_CDP_URL}); falling back to persistent launch: {e}")
+
     Path(BOT_PROFILE_DIR).mkdir(parents=True, exist_ok=True)
 
     launch_args = [
         "--no-sandbox",
         "--disable-blink-features=AutomationControlled",
         "--disable-dev-shm-usage",
+        f"--profile-directory={CHROME_PROFILE_NAME}",
     ]
+
+    # Use actual Chrome to preserve DPAPI-encrypted cookies
+    browser_exe = None
+    browser_name = "Chromium"
+    if CHROMIUM_EXE and Path(CHROMIUM_EXE).exists():
+        browser_exe = CHROMIUM_EXE
+    elif CHROME_EXE and Path(CHROME_EXE).exists():
+        browser_exe = CHROME_EXE
+        browser_name = "Chrome"
 
     _shared_context = await _shared_pw.chromium.launch_persistent_context(
         user_data_dir=BOT_PROFILE_DIR,
-        executable_path=OPERA_EXE if Path(OPERA_EXE).exists() else None,
+        executable_path=browser_exe,
         headless=config.HEADLESS,
         slow_mo=config.SLOW_MO,
         args=launch_args,
@@ -93,7 +195,7 @@ async def get_shared_context(config) -> BrowserContext:
         user_agent=(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36 OPR/108.0.0.0"
+            "Chrome/122.0.0.0 Safari/537.36"
         ),
     )
 
@@ -102,7 +204,7 @@ async def get_shared_context(config) -> BrowserContext:
         lambda route: route.abort()
     )
 
-    logger.info(f"Browser launched: {'Opera GX' if Path(OPERA_EXE).exists() else 'Chromium'} "
+    logger.info(f"Browser launched: {browser_name} "
                 f"(profile: {BOT_PROFILE_DIR})")
     return _shared_context
 
@@ -146,12 +248,20 @@ class BaseScraper(ABC):
         for attempt in range(retries):
             try:
                 await page.goto(url, timeout=timeout, wait_until="domcontentloaded")
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)  # Increased delay to be more human-like
 
                 # Check for CAPTCHA / challenge pages
                 if await self._detect_captcha(page):
                     logger.warning(f"CAPTCHA/challenge detected on {url} — "
                                    f"may need manual intervention")
+                    # Save screenshot for debugging
+                    try:
+                        from datetime import datetime
+                        ts = datetime.now().strftime("%H%M%S")
+                        await page.screenshot(path=f"logs/captcha_detected_{ts}.png")
+                        logger.info(f"  Captcha screenshot saved: captcha_detected_{ts}.png")
+                    except Exception:
+                        pass
                     return False
 
                 return True

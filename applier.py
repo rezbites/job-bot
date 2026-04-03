@@ -5,6 +5,7 @@ import asyncio
 import logging
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 from scrapers.linkedin_scraper import LinkedInScraper
 from scrapers.naukri_scraper import NaukriScraper
 from db import JobDatabase
@@ -79,10 +80,11 @@ class JobApplier:
 
         platform = job.get("platform", "").lower()
         success = False
+        failure_note = "Could not auto-apply"
 
         try:
             if "linkedin" in platform:
-                success = await self._apply_linkedin(job, tailored_pdf, cover)
+                success, failure_note = await self._apply_linkedin(job, tailored_pdf, cover)
             elif "naukri" in platform:
                 success = await self._apply_naukri(job)
             elif "indeed" in platform:
@@ -99,7 +101,7 @@ class JobApplier:
                 self.db.mark_applied(job["id"], resume_note)
                 logger.info(f"[APPLIED] {job['title']} @ {job['company']} [{platform}]")
             else:
-                self.db.mark_outcome(job["id"], "skipped", "Could not auto-apply")
+                self.db.mark_outcome(job["id"], "skipped", failure_note)
                 logger.info(f"[SKIPPED] No auto-apply path: {job['title']} @ {job['company']}")
 
         except Exception as e:
@@ -176,15 +178,96 @@ class JobApplier:
                 self.db.add_career_page(company, url, job.get("platform", ""))
                 logger.info(f"Discovered career page: {company} -> {url}")
 
-    async def _apply_linkedin(self, job: dict, resume_pdf: str, cover: str) -> bool:
+    async def _apply_linkedin(self, job: dict, resume_pdf: str, cover: str):
         if not self._linkedin_scraper:
             self._linkedin_scraper = LinkedInScraper(config)
             self._linkedin_scraper.qa = self.qa  # inject QA handler for form filling
         page = await self._linkedin_scraper.new_page()
         try:
             if not await self._linkedin_scraper._login(page):
-                return False
-            return await self._linkedin_scraper.easy_apply(page, job, resume_pdf, cover)
+                return False, "LinkedIn login failed"
+
+            if not await self._linkedin_scraper.safe_goto(page, job["url"]):
+                return False, "Could not open LinkedIn job page"
+
+            apply_btn = await page.query_selector(
+                'button:has-text("Easy Apply"), '
+                'button.jobs-apply-button:has-text("Easy Apply"), '
+                'button:has-text("Apply"), '
+                'a:has-text("Apply"), '
+                'button[aria-label*="Apply"]'
+            )
+            if not apply_btn:
+                return False, "No apply button found"
+
+            btn_text = ((await apply_btn.inner_text()) or "").strip()
+            btn_text_l = btn_text.lower()
+            logger.info(f"LinkedIn apply CTA detected: '{btn_text}' for {job.get('title')}")
+
+            if "easy apply" in btn_text_l:
+                # Scroll to button and use JavaScript click for better reliability
+                await apply_btn.scroll_into_view_if_needed()
+                await asyncio.sleep(0.5)
+                
+                # Try JS click which bypasses overlays
+                try:
+                    await apply_btn.evaluate("el => el.click()")
+                except Exception:
+                    await apply_btn.click()
+                
+                # Wait for modal to appear
+                await asyncio.sleep(2)
+                
+                # Now handle the Easy Apply modal
+                ok = await self._linkedin_scraper.handle_easy_apply_modal(page, job, resume_pdf, cover)
+                return (True, "") if ok else (False, "Easy Apply did not submit")
+
+            # Unknown/non-easy CTA: click anyway and classify by resulting destination.
+            before_url = page.url
+            before_pages = len(page.context.pages)
+            await apply_btn.click()
+            await asyncio.sleep(2)
+
+            after_url = page.url
+            linkedin_domain = "linkedin.com"
+            external_url = ""
+
+            # Some apply buttons open an external tab/window.
+            if len(page.context.pages) > before_pages:
+                new_page = page.context.pages[-1]
+                await asyncio.sleep(1)
+                external_url = new_page.url or ""
+                if external_url:
+                    logger.info(f"LinkedIn external apply tab: {external_url}")
+                if new_page != page:
+                    await new_page.close()
+
+            # Current page may also navigate externally.
+            parsed_after = urlparse(after_url)
+            if parsed_after.netloc and linkedin_domain not in parsed_after.netloc.lower():
+                external_url = after_url
+
+            # Or CTA href itself can be external even when navigation is delayed.
+            if not external_url and (await apply_btn.get_attribute("href")):
+                href = await apply_btn.get_attribute("href")
+                parsed_href = urlparse(href)
+                if parsed_href.netloc and linkedin_domain not in parsed_href.netloc.lower():
+                    external_url = href
+
+            if external_url:
+                return False, f"External redirect: {external_url}"
+
+            # Fallback: if modal opened on LinkedIn, treat as quick apply attempt.
+            modal = await page.query_selector(
+                '.jobs-easy-apply-modal, .jobs-apply-modal, div[role="dialog"]'
+            )
+            if modal:
+                ok = await self._linkedin_scraper.easy_apply(page, job, resume_pdf, cover)
+                return (True, "") if ok else (False, "Quick apply modal did not submit")
+
+            if after_url != before_url:
+                return False, f"Unknown apply path on LinkedIn: {after_url}"
+            return False, "Unknown apply path after CTA click"
         finally:
             await page.close()
 

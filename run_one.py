@@ -7,6 +7,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+import time
 
 from scrapers.linkedin_scraper import LinkedInScraper
 from scrapers.base import _shared_context, _shared_pw
@@ -38,6 +39,8 @@ async def main():
     scraper = LinkedInScraper(config)
 
     page = await scraper.new_page()
+    start_ts = time.monotonic()
+    scrape_budget_seconds = 60
     try:
         if not await scraper._login(page):
             logger.error("Could not log in to LinkedIn — aborting")
@@ -59,24 +62,32 @@ async def main():
             return
 
         await asyncio.sleep(3)
+        if time.monotonic() - start_ts > scrape_budget_seconds:
+            logger.error("Scrape budget exceeded before card scan (60s)")
+            return
 
         # Scroll once to load cards
         await page.keyboard.press("End")
         await asyncio.sleep(2)
 
-        cards = await page.query_selector_all('li[data-occludable-job-id]')
+        cards = await page.query_selector_all('li[data-occludable-job-id], li.jobs-search-results__list-item')
         logger.info(f"Found {len(cards)} job cards")
 
         if not cards:
+            title = await page.title()
+            logger.error(f"LinkedIn page title during zero-card state: {title}")
             logger.error("No job cards found — taking screenshot for debugging")
-            await page.screenshot(path="logs/run_one_debug.png")
+            await page.screenshot(path=r"C:\Users\shash\OneDrive\Desktop\job-bot\logs\run_one_debug.png")
             return
 
         # Pick the first card that has "cloud" in its title
         target_job = None
         from scrapers.base import make_job_id, score_job
 
-        for card in cards[:15]:
+        for card in cards[:10]:
+            if time.monotonic() - start_ts > scrape_budget_seconds:
+                logger.warning("Stopping card scan due to 60s scrape budget")
+                break
             try:
                 li_job_id = await card.get_attribute('data-occludable-job-id')
                 if not li_job_id:
@@ -118,17 +129,18 @@ async def main():
 
                 logger.info(f"  Candidate: {title} @ {company} | score={match}")
 
-                # Verify Easy Apply button exists on the actual job page
+                # Verify any apply button exists on the actual job page
                 verify_page = await scraper.new_page()
                 try:
                     await verify_page.goto(href, timeout=30000, wait_until="domcontentloaded")
                     await asyncio.sleep(2)
-                    # Check for visual text Easy Apply with wait
+                    # Check for apply CTA. If unknown, still proceed (will classify later).
                     apply_btn = None
                     try:
                         apply_btn = await verify_page.wait_for_selector(
                             'button:has-text("Easy Apply"), '
-                            'button.jobs-apply-button:has-text("Easy Apply")',
+                            'button.jobs-apply-button:has-text("Easy Apply"), '
+                            'button:has-text("Apply"), a:has-text("Apply"), button[aria-label*="Apply"]',
                             timeout=7000
                         )
                     except Exception:
@@ -137,14 +149,14 @@ async def main():
                         buttons = await verify_page.query_selector_all('button')
                         for b in buttons:
                             inner = (await b.inner_text()).strip()
-                            if "Easy Apply" in inner:
+                            if "Apply" in inner:
                                 apply_btn = b
                                 break
-                                
+
                     if not apply_btn:
-                        logger.info(f"  Skipping (no Easy Apply button on page): {title}")
+                        logger.info(f"  Skipping (no apply button on page): {title}")
                         continue
-                    logger.info(f"  ✓ Easy Apply button confirmed for: {title}")
+                    logger.info(f"  ✓ Apply button confirmed for: {title}")
                 except Exception as e:
                     logger.info(f"  Skipping (verify failed): {title} — {e}")
                     continue
@@ -162,7 +174,7 @@ async def main():
                     "description": description,
                     "tags": tags,
                     "match_score": match,
-                    "easy_apply": True,
+                    "easy_apply": False,
                 }
                 logger.info(f">>> SELECTED: {title} @ {company}")
                 break
